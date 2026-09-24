@@ -22,16 +22,15 @@ func Get(ctx context.Context, getter Getter, addresses []string, key string) (st
 	response := make(chan string, 1)
 
 	call := func(ctx context.Context, address, key string, response chan<- string) error {
+		resp, err := getter.Get(ctx, address, key)
+		if err != nil {
+			return nil
+		}
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
-			resp, err := getter.Get(ctx, address, key)
-			if err != nil {
-				return nil
-			}
-			response <- resp
-			close(response)
+		case response <- resp:
 			return errors.New("done")
 		}
 
@@ -44,6 +43,7 @@ func Get(ctx context.Context, getter Getter, addresses []string, key string) (st
 
 	err := group.Wait()
 	if err != nil {
+		close(response)
 		return <-response, nil
 	}
 
