@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-
-	"golang.org/x/sync/errgroup"
 )
 
 type Getter interface {
@@ -18,34 +16,43 @@ func Get(ctx context.Context, getter Getter, addresses []string, key string) (st
 	if len(addresses) == 0 {
 		return "", nil
 	}
-	group, wgCtx := errgroup.WithContext(ctx)
-	response := make(chan string, 1)
 
-	call := func(ctx context.Context, address, key string, response chan<- string) error {
-		resp, err := getter.Get(ctx, address, key)
+	result := make(chan string, 1)
+	failure := make(chan error, len(addresses))
+
+	caller := func(ctx context.Context, addr string, key string, result chan string, failure chan error) {
+		resp, err := getter.Get(ctx, addr, key)
 		if err != nil {
-			return nil
+			failure <- err
+			return
 		}
-
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case response <- resp:
-			return errors.New("done")
+			return
+		case result <- resp:
+			return
 		}
-
 	}
+
 	for _, address := range addresses {
-		group.Go(func() error {
-			return call(wgCtx, address, key, response)
-		})
+		go caller(ctx, address, key, result, failure)
 	}
 
-	err := group.Wait()
-	if err != nil {
-		close(response)
-		return <-response, nil
-	}
+	var err error
+	var counter int
 
-	return "", errors.New("not found")
+	for {
+		if counter == len(addresses) {
+			return "", err
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case e := <-failure:
+			err = errors.Join(err, e)
+			counter++
+		case res := <-result:
+			return res, nil
+		}
+	}
 }
