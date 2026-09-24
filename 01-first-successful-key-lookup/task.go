@@ -17,6 +17,9 @@ func Get(ctx context.Context, getter Getter, addresses []string, key string) (st
 		return "", nil
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	result := make(chan string, 1)
 	failure := make(chan error, len(addresses))
 
