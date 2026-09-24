@@ -11,15 +11,11 @@ func walker(t *tree.Tree, ch chan int) {
 		return
 	}
 
-	if t.Left != nil {
-		walker(t.Left, ch)
-	}
+	walker(t.Left, ch)
 	ch <- t.Value
 	fmt.Println(t.Value)
 
-	if t.Right != nil {
-		walker(t.Right, ch)
-	}
+	walker(t.Right, ch)
 }
 
 // Walk walks the tree t sending all values
@@ -43,20 +39,24 @@ func Same(t1, t2 *tree.Tree) bool {
 		Walk(t2, ch2)
 	}()
 
+	var isDifferent bool
 	for {
 		v1, ok1 := <-ch1
 		v2, ok2 := <-ch2
 		if v1 != v2 {
-			return false
+			isDifferent = true
 		}
-		if !ok1 && !ok2 {
+		if !ok1 && !ok2 && !isDifferent {
 			return true
+		}
+		if isDifferent && !ok1 && !ok2 {
+			return false
 		}
 	}
 }
 
 func main() {
 	t1 := tree.New(1)
-	t2 := tree.New(1)
+	t2 := tree.New(2)
 	fmt.Print(Same(t1, t2))
 }
