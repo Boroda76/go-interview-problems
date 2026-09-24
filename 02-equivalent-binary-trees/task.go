@@ -46,7 +46,7 @@ func Same(t1, t2 *tree.Tree) bool {
 		if !ok1 && !ok2 && !isDifferent {
 			return true
 		}
-		if v1 != v2 {
+		if v1 != v2 || ok1 != ok2 {
 			isDifferent = true
 		}
 		if isDifferent && !ok1 && !ok2 {
