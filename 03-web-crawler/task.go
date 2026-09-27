@@ -60,7 +60,7 @@ func fetch(url string, depth, maxDepth int, f Fetcher, urlsc chan task, bodiesc 
 	defer func() {
 		done <- struct{}{}
 	}()
-	if depth > maxDepth {
+	if depth >= maxDepth {
 		return
 	}
 	//if set returned true this means it is a first time url fetched

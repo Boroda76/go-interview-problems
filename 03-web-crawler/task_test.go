@@ -43,6 +43,30 @@ func TestCrawl(t *testing.T) {
 		expectedCalls int64
 	}{
 		{
+			name:   "simple depth limit",
+			url:    "https://golang.org",
+			depths: 1,
+			fetcher: &fakeFetcher{
+				results: map[string]*fakeResult{
+					"https://golang.org": {
+						body: "hello world",
+						urls: []string{
+							"https://golang.org/other-page",
+						},
+					},
+					"https://golang.org/other-page": {
+						body: "bye world",
+						urls: []string{},
+					},
+				},
+				callsCounterMap: make(map[string]int),
+				m:               sync.Mutex{},
+			},
+			result:        []string{"hello world"},
+			err:           nil,
+			expectedCalls: 1,
+		},
+		{
 			name:   "0 depth",
 			url:    "https://golang.org",
 			depths: 0,
