@@ -63,7 +63,7 @@ func fetch(url string, depth, maxDepth int, f Fetcher, urlsc chan task, bodiesc 
 	if depth >= maxDepth {
 		return
 	}
-	//if set returned true this means it is a first time url fetched
+	//if set returned true this means it is a not a first time url fetched
 	cv, ok := c.get(url)
 	if !ok {
 		cv = c.setUrl(url, depth)
@@ -82,6 +82,7 @@ func fetch(url string, depth, maxDepth int, f Fetcher, urlsc chan task, bodiesc 
 
 		bodiesc <- body
 
+		cv, _ = c.get(url)
 		for _, u := range urls {
 			counter.Add(1)
 			urlsc <- task{u, cv.minDepth + 1}
