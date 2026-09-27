@@ -10,9 +10,10 @@ import (
 
 // fakeFetcher is Fetcher that returns canned results.
 type fakeFetcher struct {
-	results      map[string]*fakeResult
-	callsCounter map[string]int
-	m            *sync.Mutex
+	results         map[string]*fakeResult
+	callsCounterMap map[string]int
+	callsCounter    int64
+	m               sync.Mutex
 }
 
 type fakeResult struct {
@@ -20,9 +21,10 @@ type fakeResult struct {
 	urls []string
 }
 
-func (f fakeFetcher) Fetch(url string) (string, []string, error) {
+func (f *fakeFetcher) Fetch(url string) (string, []string, error) {
 	f.m.Lock()
-	f.callsCounter[url]++
+	f.callsCounterMap[url]++
+	f.callsCounter++
 	f.m.Unlock()
 	if res, ok := f.results[url]; ok {
 		return res.body, res.urls, nil
@@ -32,18 +34,19 @@ func (f fakeFetcher) Fetch(url string) (string, []string, error) {
 
 func TestCrawl(t *testing.T) {
 	tests := []struct {
-		name    string
-		url     string
-		depths  int
-		fetcher fakeFetcher
-		result  []string
-		err     error
+		name          string
+		url           string
+		depths        int
+		fetcher       *fakeFetcher
+		result        []string
+		err           error
+		expectedCalls int64
 	}{
 		{
 			name:   "0 depth",
 			url:    "https://golang.org",
 			depths: 0,
-			fetcher: fakeFetcher{
+			fetcher: &fakeFetcher{
 				results: map[string]*fakeResult{"https://golang.org": {
 					"should not be displayed",
 					[]string{
@@ -52,17 +55,18 @@ func TestCrawl(t *testing.T) {
 					},
 				},
 				},
-				callsCounter: make(map[string]int),
-				m:            &sync.Mutex{},
+				callsCounterMap: make(map[string]int),
+				m:               sync.Mutex{},
 			},
-			result: []string{},
-			err:    nil,
+			result:        []string{},
+			err:           nil,
+			expectedCalls: 0,
 		},
 		{
 			name:   "default",
 			url:    "https://golang.org/",
 			depths: 4,
-			fetcher: fakeFetcher{
+			fetcher: &fakeFetcher{
 				results: map[string]*fakeResult{"https://golang.org/": &fakeResult{
 					"The Go Programming Language",
 					[]string{
@@ -94,8 +98,8 @@ func TestCrawl(t *testing.T) {
 						},
 					},
 				},
-				callsCounter: make(map[string]int),
-				m:            &sync.Mutex{},
+				callsCounterMap: make(map[string]int),
+				m:               sync.Mutex{},
 			},
 
 			result: []string{
@@ -104,6 +108,7 @@ func TestCrawl(t *testing.T) {
 				"Package fmt",
 				"Package os",
 			},
+			expectedCalls: 7,
 		},
 	}
 
@@ -120,7 +125,11 @@ func TestCrawl(t *testing.T) {
 				t.Errorf("Wrong result. Expected: %+q, Got: %+q", tt.result, result)
 			}
 
-			fmt.Println(tt.fetcher.callsCounter)
+			if tt.expectedCalls != tt.fetcher.callsCounter {
+				t.Errorf("Wrong amount of Fetch() calls. Expected: %v, Got: %v", tt.fetcher.callsCounter, tt.expectedCalls)
+			}
+
+			fmt.Println(tt.fetcher.callsCounterMap)
 		})
 	}
 }
