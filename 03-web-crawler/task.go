@@ -64,7 +64,7 @@ func fetch(url string, depth, maxDepth int, f Fetcher, urlsc chan task, bodiesc 
 		return
 	}
 	//if set returned true this means it is a first time url fetched
-	cv, ok := c.setUrl(url, depth)
+	cv, ok := c.getOrSet(url, depth)
 	if ok {
 		body, urls, err := f.Fetch(url)
 		if err != nil {
@@ -82,7 +82,7 @@ func fetch(url string, depth, maxDepth int, f Fetcher, urlsc chan task, bodiesc 
 		bodiesc <- body
 
 		//in case if there is other goroutine updated min depth
-		cv, _ = c.setUrl(url, depth)
+		cv = c.setUrl(url, depth)
 		for _, u := range urls {
 			counter.Add(1)
 			urlsc <- task{u, cv.minDepth + 1}
@@ -92,7 +92,7 @@ func fetch(url string, depth, maxDepth int, f Fetcher, urlsc chan task, bodiesc 
 		if cv.minDepth > depth {
 			c.setUrl(url, depth)
 
-			cv, _ = c.setUrl(url, depth)
+			cv = c.setUrl(url, depth)
 			for _, u := range cv.urls {
 				counter.Add(1)
 				urlsc <- task{u, cv.minDepth + 1}
@@ -126,20 +126,19 @@ cache operations:
 3. get urls + depth
 */
 
-// returns a cacheValue and bool flag meaning if record was just created
-func (c *cache) setUrl(url string, depth int) (cacheValue, bool) {
+func (c *cache) setUrl(url string, depth int) cacheValue {
 	c.m.Lock()
 	defer c.m.Unlock()
 	if v, ok := c.urls[url]; ok {
 		v.minDepth = min(depth, v.minDepth)
 		c.urls[url] = v
-		return v, false
+		return v
 	}
 	v := cacheValue{
 		minDepth: depth,
 	}
 	c.urls[url] = v
-	return v, true
+	return v
 }
 
 func (c *cache) setUrls(url string, urls []string) cacheValue {
@@ -154,4 +153,18 @@ func (c *cache) setUrls(url string, urls []string) cacheValue {
 		return v
 	}
 	panic("unexpected cache state")
+}
+
+// returns a cacheValue and bool flag meaning if record was just created
+func (c *cache) getOrSet(url string, depth int) (cacheValue, bool) {
+	c.m.Lock()
+	defer c.m.Unlock()
+	if v, ok := c.urls[url]; ok {
+		return v, false
+	}
+	v := cacheValue{
+		minDepth: depth,
+	}
+	c.urls[url] = v
+	return v, true
 }
