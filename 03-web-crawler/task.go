@@ -17,6 +17,11 @@ type Fetcher interface {
 	Fetch(url string) (body string, urls []string, err error)
 }
 
+type task struct {
+	url   string
+	depth int
+}
+
 // Crawl uses fetcher to recursively crawl
 // pages starting with url, to a maximum of depth.
 func Crawl(url string, depth int, fetcher Fetcher) ([]string, error) {
@@ -25,19 +30,19 @@ func Crawl(url string, depth int, fetcher Fetcher) ([]string, error) {
 	var bodies []string
 	counter.Store(1)
 	errc := make(chan error)
-	urlsc := make(chan string)
+	urlsc := make(chan task)
 	bodiesc := make(chan string)
 	var err error
 	urlsCache := newCache()
 
-	go fetch(url, fetcher, urlsc, bodiesc, urlsCache, &counter, errc, done)
+	go fetch(url, 0, depth, fetcher, urlsc, bodiesc, urlsCache, &counter, errc, done)
 
 	for counter.Load() > 0 {
 		select {
 		case e := <-errc:
 			err = errors.Join(err, e)
 		case u := <-urlsc:
-			go fetch(u, fetcher, urlsc, bodiesc, urlsCache, &counter, errc, done)
+			go fetch(u.url, u.depth, depth, fetcher, urlsc, bodiesc, urlsCache, &counter, errc, done)
 		case <-done:
 			counter.Add(-1)
 		case b := <-bodiesc:
@@ -48,10 +53,13 @@ func Crawl(url string, depth int, fetcher Fetcher) ([]string, error) {
 	return bodies, nil
 }
 
-func fetch(url string, f Fetcher, urlsc, bodiesc chan<- string, c *cache, counter *atomic.Int64, errc chan<- error, done chan<- struct{}) {
+func fetch(url string, depth, maxDepth int, f Fetcher, urlsc chan task, bodiesc chan<- string, c *cache, counter *atomic.Int64, errc chan<- error, done chan<- struct{}) {
 	defer func() {
 		done <- struct{}{}
 	}()
+	if depth > maxDepth {
+		return
+	}
 	//if set returned true this means it is a first time url fetched
 	if c.set(url) {
 		body, urls, err := f.Fetch(url)
@@ -70,7 +78,7 @@ func fetch(url string, f Fetcher, urlsc, bodiesc chan<- string, c *cache, counte
 
 		for _, u := range urls {
 			counter.Add(1)
-			urlsc <- u
+			urlsc <- task{u, depth + 1}
 		}
 	}
 
