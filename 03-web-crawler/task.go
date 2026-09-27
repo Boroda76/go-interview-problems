@@ -25,6 +25,9 @@ type task struct {
 // Crawl uses fetcher to recursively crawl
 // pages starting with url, to a maximum of depth.
 func Crawl(url string, depth int, fetcher Fetcher) ([]string, error) {
+	if depth == 0 {
+		return []string{}, nil
+	}
 	done := make(chan struct{})
 	var counter atomic.Int64
 	var bodies []string

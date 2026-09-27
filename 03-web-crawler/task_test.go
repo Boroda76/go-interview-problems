@@ -40,6 +40,25 @@ func TestCrawl(t *testing.T) {
 		err     error
 	}{
 		{
+			name:   "0 depth",
+			url:    "https://golang.org",
+			depths: 0,
+			fetcher: fakeFetcher{
+				results: map[string]*fakeResult{"https://golang.org": {
+					"should not be displayed",
+					[]string{
+						"https://golang.org",
+						"https://golang.org/do-not-follow",
+					},
+				},
+				},
+				callsCounter: make(map[string]int),
+				m:            &sync.Mutex{},
+			},
+			result: []string{},
+			err:    nil,
+		},
+		{
 			name:   "default",
 			url:    "https://golang.org/",
 			depths: 4,
