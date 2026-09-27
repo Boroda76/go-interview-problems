@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"sync"
 	"testing"
 )
 
@@ -11,6 +12,7 @@ import (
 type fakeFetcher struct {
 	results      map[string]*fakeResult
 	callsCounter map[string]int
+	m            *sync.Mutex
 }
 
 type fakeResult struct {
@@ -19,7 +21,9 @@ type fakeResult struct {
 }
 
 func (f fakeFetcher) Fetch(url string) (string, []string, error) {
+	f.m.Lock()
 	f.callsCounter[url]++
+	f.m.Unlock()
 	if res, ok := f.results[url]; ok {
 		return res.body, res.urls, nil
 	}
@@ -72,6 +76,7 @@ func TestCrawl(t *testing.T) {
 					},
 				},
 				callsCounter: make(map[string]int),
+				m:            &sync.Mutex{},
 			},
 
 			result: []string{
