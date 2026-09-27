@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -19,6 +20,7 @@ type Fetcher interface {
 // Crawl uses fetcher to recursively crawl
 // pages starting with url, to a maximum of depth.
 func Crawl(url string, depth int, fetcher Fetcher) ([]string, error) {
+	done := make(chan struct{})
 	var counter atomic.Int64
 	counter.Store(1)
 	errc := make(chan error)
@@ -26,29 +28,34 @@ func Crawl(url string, depth int, fetcher Fetcher) ([]string, error) {
 	var err error
 	urlsCache := newCache()
 
-	go fetch(url, fetcher, urlsc, urlsCache, &counter, errc)
+	go fetch(url, fetcher, urlsc, urlsCache, &counter, errc, done)
 
 	for counter.Load() > 0 {
 		select {
 		case e := <-errc:
 			err = errors.Join(err, e)
 		case u := <-urlsc:
-			go fetch(u, fetcher, urlsc, urlsCache, &counter, errc)
+			go fetch(u, fetcher, urlsc, urlsCache, &counter, errc, done)
+		case <-done:
+			counter.Add(-1)
 		}
 	}
-	return urlsCache.getValues(), err
+	fmt.Printf("error is: %v\n", err)
+	return urlsCache.getValues(), nil
 }
 
-func fetch(url string, f Fetcher, urlsc chan<- string, c *cache, counter *atomic.Int64, errc chan<- error) {
+func fetch(url string, f Fetcher, urlsc chan<- string, c *cache, counter *atomic.Int64, errc chan<- error, done chan<- struct{}) {
+	defer func() {
+		done <- struct{}{}
+	}()
 	body, urls, err := f.Fetch(url)
 	if err != nil {
 		//up to 3 retries
-		for i := 0; i < 2 || err == nil; i++ {
+		for i := 0; i < 2 && err != nil; i++ {
 			body, urls, err = f.Fetch(url)
 		}
 		if err != nil {
 			errc <- err
-			counter.Add(-1)
 			return
 		}
 	}
@@ -58,8 +65,6 @@ func fetch(url string, f Fetcher, urlsc chan<- string, c *cache, counter *atomic
 			counter.Add(1)
 			urlsc <- u
 		}
-	} else {
-		counter.Add(-1)
 	}
 }
 
