@@ -130,6 +130,7 @@ func (c *cache) setUrl(url string, depth int) cacheValue {
 	defer c.m.Unlock()
 	if v, ok := c.urls[url]; ok {
 		v.minDepth = min(depth, v.minDepth)
+		c.urls[url] = v
 		return v
 	}
 	v := cacheValue{
