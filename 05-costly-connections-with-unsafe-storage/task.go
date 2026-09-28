@@ -40,14 +40,15 @@ func SendAndSave(creator ConnectionCreator, saver Saver, requests []string, maxC
 	}()
 	//channel for responses
 	resps := make(chan string)
-	defer close(resps)
 
 	wg := new(sync.WaitGroup)
-
+	done := make(chan struct{})
 	go func() {
 		for resp := range resps {
 			saver.Save(resp)
 		}
+		done <- struct{}{}
+		close(done)
 	}()
 
 	for i := 0; i < maxConn; i++ {
@@ -74,4 +75,6 @@ func SendAndSave(creator ConnectionCreator, saver Saver, requests []string, maxC
 		})
 	}
 	wg.Wait()
+	close(resps)
+	<-done
 }
