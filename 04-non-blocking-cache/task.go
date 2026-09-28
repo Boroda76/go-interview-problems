@@ -48,6 +48,10 @@ func (c *Cache) Get(address string) (string, error) {
 	c.l.RUnlock()
 
 	c.l.Lock()
+	if _, ok := c.storage[address]; ok {
+		c.l.Unlock()
+		return c.wait(address)
+	}
 	c.storage[address] = cacheEntry{ready: make(chan cacheData, 1)}
 	c.l.Unlock()
 	go func() {
