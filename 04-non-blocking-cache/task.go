@@ -7,39 +7,35 @@ type Client interface {
 }
 
 type cacheEntry struct {
-	address string
-	page    string
-	err     error
+	ready chan struct{}
+	page  string
+	err   error
 }
 type Cache struct {
 	client Client
 	// You can add new fields if needed
-	storage map[string]cacheEntry
-	l       *sync.RWMutex
+	storage map[string]*cacheEntry
+	l       sync.Mutex
 }
 
 // Don't update signature of NewCache
 func NewCache(client Client) *Cache {
-	storage := make(map[string]cacheEntry)
-	l := sync.RWMutex{}
-	return &Cache{client: client, storage: storage, l: &l}
+	return &Cache{client: client, storage: make(map[string]*cacheEntry), l: sync.Mutex{}}
 }
 
 // Cache Client.Get result
 func (c *Cache) Get(address string) (string, error) {
-	c.l.RLock()
-	if entry, ok := c.storage[address]; ok {
-		c.l.RUnlock()
-		return entry.page, entry.err
-	}
-	c.l.RUnlock()
 	c.l.Lock()
-	if entry, ok := c.storage[address]; ok {
+	entry := c.storage[address]
+	if entry == nil {
+		entry = &cacheEntry{ready: make(chan struct{})}
+		c.storage[address] = entry
 		c.l.Unlock()
-		return entry.page, entry.err
+		entry.page, entry.err = c.client.Get(address)
+		close(entry.ready)
+	} else {
+		c.l.Unlock()
+		<-entry.ready
 	}
-	page, err := c.client.Get(address)
-	c.storage[address] = cacheEntry{address: address, page: page, err: err}
-	c.l.Unlock()
-	return page, err
+	return entry.page, entry.err
 }
