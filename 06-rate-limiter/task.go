@@ -1,32 +1,43 @@
 package main
 
 import (
-	"sync"
 	"time"
 )
 
 type RateLimiter struct {
-	n        int
-	capacity chan struct{}
-	l        sync.Mutex
+	n      int
+	bucket chan struct{}
 }
 
 func NewRateLimiter(n int) *RateLimiter {
-	capacity := make(chan struct{}, n-1)
+	capacity := make(chan struct{}, n)
+
+	//tick n times per second
+	ticker := time.NewTicker(time.Second / time.Duration(n))
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				//empty 1 slot or do nothing
+				select {
+				case <-capacity:
+				default:
+					continue
+				}
+			}
+		}
+	}()
 
 	return &RateLimiter{
-		n:        n,
-		capacity: capacity,
-		l:        sync.Mutex{},
+		n:      n,
+		bucket: capacity,
 	}
 }
 
 func (r *RateLimiter) CanTake() bool {
 	select {
-	case r.capacity <- struct{}{}:
-		tick := time.Tick(time.Second / time.Duration(r.n))
-		<-tick
-		<-r.capacity
+	case r.bucket <- struct{}{}:
 		return true
 	default:
 		return false
@@ -36,11 +47,6 @@ func (r *RateLimiter) CanTake() bool {
 
 func (r *RateLimiter) Take() {
 	select {
-	case r.capacity <- struct{}{}:
-		go func() {
-			tick := time.Tick(time.Second / time.Duration(r.n))
-			<-tick
-			<-r.capacity
-		}()
+	case r.bucket <- struct{}{}:
 	}
 }
