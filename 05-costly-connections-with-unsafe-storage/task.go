@@ -1,6 +1,9 @@
 package main
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 type Connection interface {
 	// Need call Connect before Send
@@ -26,6 +29,17 @@ type Saver interface {
 	Save(data string)
 }
 
+func finish(remaining *atomic.Int64, done chan struct{}) {
+	select {
+	case <-done:
+		return
+	default:
+		if remaining.Add(-1) == 0 {
+			close(done)
+		}
+	}
+}
+
 // SendAndSave should send all requests concurrently using at most `maxConn` simultaneous connections.
 // Responses must be saved using Saver.Save.
 // Be careful: Saver.Save is not safe for concurrent use.
@@ -47,7 +61,6 @@ func SendAndSave(creator ConnectionCreator, saver Saver, requests []string, maxC
 		for resp := range resps {
 			saver.Save(resp)
 		}
-		done <- struct{}{}
 		close(done)
 	}()
 
