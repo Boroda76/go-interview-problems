@@ -101,7 +101,12 @@ func (c *TtlCache) Get(key string) (string, bool) {
 
 func (c *TtlCache) Delete(key string) {
 	c.l.Lock()
-	delete(c.storage, key)
+	if v, ok := c.storage[key]; ok {
+		if v.t != nil {
+			v.t.Stop()
+		}
+		delete(c.storage, key)
+	}
 	c.l.Unlock()
 }
 
