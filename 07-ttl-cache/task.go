@@ -8,105 +8,80 @@ import (
 
 type TtlCache struct {
 	l       sync.Mutex
-	storage map[string]task
-	ctx     context.Context
-	cancel  context.CancelFunc
-	expire  chan string
+	storage map[string]cacheVal
+	//todo: re-build with built-in min heap
+	//deleteQueue heap.Interface
+	cancel context.CancelFunc
 }
 
-type task struct {
+type cacheVal struct {
 	value string
-	t     *time.Timer
+	valid int64
+}
+
+func (c *TtlCache) clear(ctx context.Context) {
+	t := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			c.l.Lock()
+			for k, v := range c.storage {
+				if time.Now().Unix() > v.valid {
+					delete(c.storage, k)
+				}
+			}
+			c.l.Unlock()
+		}
+	}
 }
 
 func NewTtlCache() *TtlCache {
-	c := new(TtlCache)
-	c.storage = make(map[string]task)
-	c.ctx, c.cancel = context.WithCancel(context.Background())
-	return c
+	ctx, cancel := context.WithCancel(context.Background())
+
+	cache := &TtlCache{
+		storage: make(map[string]cacheVal),
+		cancel:  cancel,
+		l:       sync.Mutex{},
+	}
+
+	go cache.clear(ctx)
+
+	return cache
+
 }
 
 func (c *TtlCache) Set(key string, value string, ttl time.Duration) {
+	var exp int64
+	if ttl > 0 {
+		exp = time.Now().Add(ttl).UnixNano()
+	}
+
 	c.l.Lock()
-	if v, ok := c.storage[key]; ok {
-		v.value = value
-		if ttl > 0 {
-			if v.t == nil {
-				v.t = time.NewTimer(ttl)
-			} else {
-				v.t.Reset(ttl)
-			}
-			go func() {
-				select {
-				//ctx done has priority
-				case <-c.ctx.Done():
-					return
-				default:
-					select {
-					case <-c.ctx.Done():
-						return
-					case <-v.t.C:
-						c.Delete(key)
-					}
-				}
-			}()
-		} else {
-			if v.t != nil {
-				v.t.Stop()
-			}
-		}
-		c.storage[key] = v
-		c.l.Unlock()
-		return
-	}
-	var t *time.Timer
-	if ttl > 0 {
-		t = time.NewTimer(ttl)
-	}
-	v := task{
-		value: value,
-		t:     t,
-	}
-	c.storage[key] = v
-	if ttl > 0 {
-		go func() {
-			select {
-			//ctx done has priority
-			case <-c.ctx.Done():
-				return
-			default:
-				select {
-				case <-c.ctx.Done():
-					return
-				case <-v.t.C:
-					c.Delete(key)
-				}
-			}
-		}()
-	}
+	c.storage[key] = cacheVal{value, exp}
 	c.l.Unlock()
-	return
 }
 
 func (c *TtlCache) Get(key string) (string, bool) {
 	c.l.Lock()
-	defer c.l.Unlock()
 	v, ok := c.storage[key]
 	if ok {
-		return v.value, ok
+		if time.Now().UnixNano() > v.valid && v.valid > 0 {
+			delete(c.storage, key)
+			c.l.Unlock()
+			return "", false
+		}
+		c.l.Unlock()
+		return v.value, true
 	}
-
+	c.l.Unlock()
 	return "", false
 }
 
 func (c *TtlCache) Delete(key string) {
 	c.l.Lock()
-	if v, ok := c.storage[key]; ok {
-		if v.t != nil {
-			v.t.Stop()
-		}
-		delete(c.storage, key)
-	}
+	delete(c.storage, key)
 	c.l.Unlock()
 }
 
