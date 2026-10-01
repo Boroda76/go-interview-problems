@@ -31,7 +31,11 @@ func (c *TtlCache) Set(key string, value string, ttl time.Duration) {
 	if v, ok := c.storage[key]; ok {
 		v.value = value
 		if ttl > 0 {
-			v.t.Reset(ttl)
+			if v.t == nil {
+				v.t = time.NewTimer(ttl)
+			} else {
+				v.t.Reset(ttl)
+			}
 			go func() {
 				select {
 				//ctx done has priority
